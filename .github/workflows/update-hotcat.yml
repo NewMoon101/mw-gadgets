@@ -1,0 +1,57 @@
+name: Update HotCat Gadget
+
+on:
+    schedule:
+        # 每月1号 UTC 时间 00:00 执行
+        - cron: "0 0 1 * *"
+    # 允许手动触发
+    workflow_dispatch:
+
+jobs:
+    update-hotcat:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+
+            - name: Fetch remote HotCat.js from Wikimedia Commons
+              run: |
+                  curl -s "https://commons.wikimedia.org/w/index.php?title=MediaWiki:Gadget-HotCat.js&action=raw&ctype=text/javascript" \
+                    -o /tmp/remote_hotcat.js
+
+            - name: Compare and update file if changed
+              id: compare
+              run: |
+                  # 检查文件是否存在差异
+                  if ! cmp -s /tmp/remote_hotcat.js gadgets/hotcat/hotcat.js; then
+                    echo "检测到文件变化"
+                    echo "changed=true" >> $GITHUB_OUTPUT
+                    # 更新仓库中的文件
+                    cp /tmp/remote_hotcat.js gadgets/hotcat/hotcat.js
+                  else
+                    echo "文件无变化"
+                    echo "changed=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Commit and push changes
+              if: steps.compare.outputs.changed == 'true'
+              run: |
+                  git config --local user.email "F11F10E8@outlook.com"
+                  git config --local user.name "smalllqiang"
+                  git add gadgets/hotcat/hotcat.js
+                  git commit -m "chore: auto-update HotCat gadget from Wikimedia Commons
+
+                  自动从 Wikimedia Commons 更新 HotCat 小工具"
+                  git push origin main
+
+            - name: Purge jsDelivr cache
+              if: steps.compare.outputs.changed == 'true'
+              run: |
+                  echo "正在刷新 jsDelivr 缓存..."
+                  curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/gadgets/hotcat/hotcat.js"
+                  echo "缓存刷新请求已发送"
